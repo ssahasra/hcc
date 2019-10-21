@@ -67,7 +67,6 @@ endif (USE_CODEXL_ACTIVITY_LOGGER EQUAL 1)
 # add subdirectories
 ####################
 add_subdirectory(hsa)
-add_subdirectory(cpu)
 
 ####################
 # install targets

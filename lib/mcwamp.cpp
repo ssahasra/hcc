@@ -38,53 +38,22 @@ extern "C" const char* GetCmdNameImpl(unsigned);
 struct RuntimeImpl {
   RuntimeImpl(const char* libraryName) :
     m_ImplName(libraryName),
-    m_RuntimeHandle(nullptr),
     m_PushArgImpl(nullptr),
     m_PushArgPtrImpl(nullptr),
     m_GetContextImpl(nullptr),
     m_ShutdownImpl(nullptr),
     m_InitActivityCallbackImpl(nullptr),
     m_EnableActivityCallbackImpl(nullptr),
-    m_GetCmdNameImpl(nullptr),
-    isCPU(false) {
-    //std::cout << "dlopen(" << libraryName << ")\n";
-  
-  #if 0
-    m_RuntimeHandle = dlopen(libraryName, RTLD_LAZY);
-    if (!m_RuntimeHandle) {
-      std::cerr << "C++AMP runtime load error: " << dlerror() << std::endl;
-      return;
-    }
-  #endif
-  
-    // FIXME: horrible hack to get things to work!
-    m_RuntimeHandle = (void*)0x01;
-
+    m_GetCmdNameImpl(nullptr) {
     LoadSymbols();
   }
 
   ~RuntimeImpl() {
-    if (m_RuntimeHandle) {
       m_ShutdownImpl();
-  #if 0
-      dlclose(m_RuntimeHandle);
-  #endif
-    }
   }
 
   // load symbols from C++AMP runtime implementation
   void LoadSymbols() {
-
-#if 0
-    m_PushArgImpl = (PushArgImpl_t) dlsym(m_RuntimeHandle, "PushArgImpl");
-    m_PushArgPtrImpl = (PushArgPtrImpl_t) dlsym(m_RuntimeHandle, "PushArgPtrImpl");
-    m_GetContextImpl= (GetContextImpl_t) dlsym(m_RuntimeHandle, "GetContextImpl");
-    m_ShutdownImpl= (ShutdownImpl_t) dlsym(m_RuntimeHandle, "ShutdownImpl");
-    m_InitActivityCallbackImpl = (InitActivityCallbackImpl_t) dlsym(m_RuntimeHandle, "InitActivityCallbackImpl");
-    m_EnableActivityCallbackImpl = (EnableActivityCallbackImpl_t) dlsym(m_RuntimeHandle, "EnableActivityCallbackImpl");
-    m_GetCmdNameImpl = (GetCmdNameImpl_t) dlsym(m_RuntimeHandle, "GetCmdNameImpl");
-#else
-
     m_PushArgImpl = PushArgImpl;
     m_PushArgPtrImpl = PushArgPtrImpl;
     m_GetContextImpl = GetContextImpl;
@@ -92,15 +61,9 @@ struct RuntimeImpl {
     m_InitActivityCallbackImpl = InitActivityCallbackImpl;
     m_EnableActivityCallbackImpl = EnableActivityCallbackImpl;
     m_GetCmdNameImpl = GetCmdNameImpl;
-
-#endif
   }
 
-  void set_cpu() { isCPU = true; }
-  bool is_cpu() const { return isCPU; }
-
   std::string m_ImplName;
-  void* m_RuntimeHandle;
   PushArgImpl_t m_PushArgImpl;
   PushArgPtrImpl_t m_PushArgPtrImpl;
   GetContextImpl_t m_GetContextImpl;
@@ -110,8 +73,6 @@ struct RuntimeImpl {
   InitActivityCallbackImpl_t m_InitActivityCallbackImpl;
   EnableActivityCallbackImpl_t m_EnableActivityCallbackImpl;
   GetCmdNameImpl_t m_GetCmdNameImpl;
-
-  bool isCPU;
 };
 
 namespace Kalmar {
@@ -205,13 +166,6 @@ static RuntimeImpl* LoadHSARuntime() {
     std::cout << "Use HSA runtime" << std::endl;
   std::string lib = get_library_path() + LIB_NAME_WITH_VERSION("libmcwamp_hsa.so");
   runtimeImpl = new RuntimeImpl(lib.c_str());
-  if (!runtimeImpl->m_RuntimeHandle) {
-    std::cerr << "Can't load HSA runtime!" << std::endl;
-    delete runtimeImpl;
-    exit(-1);
-  } else {
-    //std::cout << "HSA C++AMP runtime loaded" << std::endl;
-  }
   return runtimeImpl;
 }
 
@@ -222,11 +176,6 @@ static RuntimeImpl* LoadCPURuntime() {
     std::cout << "Use CPU runtime" << std::endl;
   std::string lib = get_library_path() + LIB_NAME_WITH_VERSION("libmcwamp_cpu.so"); 
   runtimeImpl = new RuntimeImpl(lib.c_str());
-  if (!runtimeImpl->m_RuntimeHandle) {
-    std::cerr << "Can't load CPU runtime!" << std::endl;
-    delete runtimeImpl;
-    exit(-1);
-  }
   return runtimeImpl;
 }
 
@@ -251,24 +200,13 @@ static RuntimeImpl* GetOrInitRuntime_impl() {
         std::cerr << "Ignore unsupported HCC_RUNTIME environment variable: " << runtime_env << std::endl;
       }
     } else if(std::string("CPU") == runtime_env) {
-        // CPU runtime should be available
-        runtimeImpl = LoadCPURuntime();
-        runtimeImpl->set_cpu();
+      std::cerr << "CPU runtime no longer supported" << std::endl;
+      exit(-1);
     } else {
       std::cerr << "Ignore unknown HCC_RUNTIME environment variable:" << runtime_env << std::endl;
     }
   }
-
-  // If can't determined by environment variable, try detect what can be used
-  if (runtimeImpl == nullptr) {
-    if (hsa_rt.detect()) {
-      runtimeImpl = LoadHSARuntime();
-    } else {
-        runtimeImpl = LoadCPURuntime();
-        runtimeImpl->set_cpu();
-        std::cerr << "No suitable runtime detected. Fall back to CPU!" << std::endl;
-    }
-  } 
+ 
   return runtimeImpl;
 }
 
@@ -279,11 +217,6 @@ RuntimeImpl* GetOrInitRuntime() {
     runtime = std::move(std::unique_ptr<RuntimeImpl>(GetOrInitRuntime_impl()));
   });
   return runtime.get();
-}
-
-bool is_cpu()
-{
-    return GetOrInitRuntime()->is_cpu();
 }
 
 static bool in_kernel = false;
